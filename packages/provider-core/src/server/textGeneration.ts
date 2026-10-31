@@ -1,6 +1,7 @@
 import type {
   BranchNamingOptions,
   ChatAttachment,
+  ChatImageAttachment,
   ModelSelection,
   PullRequestReviewGuide,
   TextGenerationError,
@@ -97,6 +98,18 @@ export type ReviewGuideGenerationResult = Omit<
   "headSha" | "generatedAt" | "modelSelection"
 >;
 
+export interface ImageDescriptionInput {
+  cwd: string;
+  image: ChatImageAttachment;
+  /** Focuses the transcription on what the reader needs; never replaces a full transcription. */
+  question?: string | undefined;
+  modelSelection: ModelSelection;
+}
+
+export interface ImageDescriptionResult {
+  description: string;
+}
+
 export interface ProviderTextGeneration {
   readonly generateCommitMessage: (
     input: CommitMessageGenerationInput,
@@ -117,4 +130,9 @@ export interface ProviderTextGeneration {
   readonly generateReviewGuide: (
     input: ReviewGuideGenerationInput,
   ) => Effect.Effect<ReviewGuideGenerationResult, TextGenerationError>;
+
+  /** Absent unless the runner delivers image bytes to the model; others would describe nothing. */
+  readonly describeImage?: (
+    input: ImageDescriptionInput,
+  ) => Effect.Effect<ImageDescriptionResult, TextGenerationError>;
 }

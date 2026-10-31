@@ -8353,6 +8353,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
           providerSessionId: input.providerSessionId,
           providerSession,
           events: Stream.fromEffectRepeat(Queue.take(events)),
+          acceptsImagePrompts: supportsImagePrompts,
           ...(flavor.getModelContextWindow === undefined
             ? {}
             : {

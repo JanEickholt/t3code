@@ -38,6 +38,7 @@ export const loadOpenCode2Catalog = (
           name: model.name,
           ...(providerName ? { providerName } : {}),
           variants: model.variants.map((variant) => ({ id: variant.id })),
+          inputModalities: model.capabilities.input,
           family: model.family,
           released: model.time.released,
           deprecated: model.status === "deprecated",

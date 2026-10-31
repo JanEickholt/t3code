@@ -789,12 +789,19 @@ it.layer(layerTest)("checkOpenCodeProviderStatus", (it) => {
         undefined,
         undefined,
         Effect.succeed([
-          { providerID: "opencode", id: "big-pickle", name: "Big Pickle", variants: [] },
+          {
+            providerID: "opencode",
+            id: "big-pickle",
+            name: "Big Pickle",
+            variants: [],
+            inputModalities: ["text"],
+          },
           {
             providerID: "opencode",
             id: "space-bunny-free",
             name: "Space Bunny Free",
             variants: [{ id: "low" }, { id: "medium" }, { id: "high" }],
+            inputModalities: ["text", "image"],
           },
         ]),
       );
@@ -816,6 +823,10 @@ it.layer(layerTest)("checkOpenCodeProviderStatus", (it) => {
       NodeAssert.deepEqual(
         snapshot.models.map((model) => model.slug),
         ["opencode/big-pickle", "opencode/space-bunny-free"],
+      );
+      NodeAssert.deepEqual(
+        snapshot.models.map((model) => model.capabilities?.imageInput),
+        [false, true],
       );
       const variant = snapshot.models.find((model) => model.slug === "opencode/space-bunny-free")
         ?.capabilities?.optionDescriptors?.[0];

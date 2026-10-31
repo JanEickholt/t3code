@@ -226,6 +226,18 @@ const DEFAULT_OPENCODE_MODEL_CAPABILITIES: ModelCapabilities = createModelCapabi
   ],
 });
 
+/** An empty or missing input list means the catalog does not say, not that images are refused. */
+function imageInputFrom(input: ReadonlyArray<string> | undefined): boolean | undefined {
+  return input === undefined || input.length === 0 ? undefined : input.includes("image");
+}
+
+function withImageInput(
+  capabilities: ModelCapabilities,
+  imageInput: boolean | undefined,
+): ModelCapabilities {
+  return imageInput === undefined ? capabilities : { ...capabilities, imageInput };
+}
+
 function openCodeCapabilitiesForModel(input: {
   readonly providerID: string;
   readonly model: ProviderListResponse["all"][number]["models"][string];
@@ -249,7 +261,7 @@ function openCodeCapabilitiesForModel(input: {
       ? { id: agent.name, label: titleCaseSlug(agent.name), isDefault: true as const }
       : { id: agent.name, label: titleCaseSlug(agent.name) },
   );
-  return createModelCapabilities({
+  const capabilities = createModelCapabilities({
     optionDescriptors: [
       ...(variantOptions.length > 0
         ? [
@@ -275,6 +287,7 @@ function openCodeCapabilitiesForModel(input: {
         : []),
     ],
   });
+  return withImageInput(capabilities, input.model.capabilities?.input.image);
 }
 
 interface OpenCodeRelease {
@@ -451,6 +464,7 @@ export const makePendingOpenCodeProvider = Effect.fn(
 export interface OpenCode2Model extends OpenCodeRelease {
   readonly id: string;
   readonly name: string;
+  readonly inputModalities?: ReadonlyArray<string>;
   readonly providerName?: string;
   readonly variants: ReadonlyArray<{ readonly id: string }>;
 }
@@ -582,7 +596,7 @@ const OPENCODE_2_PRESENTATION = {
 function openCode2ModelCapabilities(model: OpenCode2Model): ModelCapabilities {
   const variants = model.variants.map((variant) => variant.id);
   const defaultVariant = inferDefaultVariant(model.providerID, variants);
-  return createModelCapabilities({
+  const capabilities = createModelCapabilities({
     optionDescriptors:
       variants.length === 0
         ? []
@@ -600,6 +614,7 @@ function openCode2ModelCapabilities(model: OpenCode2Model): ModelCapabilities {
             },
           ],
   });
+  return withImageInput(capabilities, imageInputFrom(model.inputModalities));
 }
 
 const checkOpenCode2 = Effect.fn("checkOpenCode2")(function* (

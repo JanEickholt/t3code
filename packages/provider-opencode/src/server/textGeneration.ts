@@ -18,6 +18,7 @@ const OpenCodeTextGenerationOperation = Schema.Literals([
   "generateBranchName",
   "generateThreadTitle",
   "generateReviewGuide",
+  "describeImage",
 ]);
 
 const openCodeTextGenerationErrorContext = {
@@ -369,5 +370,6 @@ export const makeOpenCodeTextGeneration = Effect.fn("makeOpenCodeTextGeneration"
   return TextGenerationOperations.fromRunner(
     "OpenCodeTextGeneration",
     TextGenerationOperations.withoutInvestigation("OpenCode", runOpenCodeJson),
+    { images: true },
   );
 });

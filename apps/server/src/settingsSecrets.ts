@@ -3,6 +3,7 @@ import {
   ClaudeSettings,
   CodexSettings,
   EasDeviceHostConfig,
+  ImageRelayApi,
   type ServerSettings,
   SimlockDeviceHostConfig,
   UsageLimitSourceConfig,
@@ -45,6 +46,7 @@ const providerSecretFields = new Map([
 const usageLimitSecretFields = secretSettingsFields(UsageLimitSourceConfig);
 const easDeviceHostSecretFields = secretSettingsFields(EasDeviceHostConfig);
 const simlockDeviceHostSecretFields = secretSettingsFields(SimlockDeviceHostConfig);
+const imageRelayApiSecretFields = secretSettingsFields(ImageRelayApi);
 const encode = (value: string) => Buffer.from(value, "utf8").toString("base64url");
 
 export interface SettingsSecret {
@@ -182,6 +184,21 @@ export function mapSettingsSecrets(
       ) as SimlockDeviceHostConfig,
   );
 
+  const api = settings.imageRelay.api;
+  const imageRelay =
+    api === null
+      ? settings.imageRelay
+      : {
+          ...settings.imageRelay,
+          api: mapFields(
+            api,
+            imageRelayApiSecretFields,
+            (field, serverHost) =>
+              `image-relay-api-${encode(field)}` +
+              (serverHost === null ? "" : `-${encode(serverHost)}`),
+          ) as ImageRelayApi,
+        };
+
   return {
     ...settings,
     providerInstances,
@@ -189,5 +206,6 @@ export function mapSettingsSecrets(
     usageLimitSources,
     easDeviceHosts,
     simlockDeviceHosts,
+    imageRelay,
   };
 }

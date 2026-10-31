@@ -27,6 +27,8 @@ export type {
   BranchNameGenerationResult,
   CommitMessageGenerationInput,
   CommitMessageGenerationResult,
+  ImageDescriptionInput,
+  ImageDescriptionResult,
   PrContentGenerationInput,
   PrContentGenerationResult,
   ReviewGuideGenerationInput,
@@ -44,7 +46,8 @@ type TextGenerationOp =
   | "generatePrContent"
   | "generateBranchName"
   | "generateThreadTitle"
-  | "generateReviewGuide";
+  | "generateReviewGuide"
+  | "describeImage";
 
 const resolveInstance = (
   registry: ProviderInstanceRegistry.ProviderInstanceRegistry["Service"],
@@ -145,6 +148,18 @@ export const make = Effect.gen(function* () {
     generateReviewGuide: Effect.fn("TextGeneration.generateReviewGuide")(function (input) {
       return generate("generateReviewGuide", input.modelSelection, (service, modelSelection) =>
         service.generateReviewGuide({ ...input, modelSelection }),
+      );
+    }),
+    describeImage: Effect.fn("TextGeneration.describeImage")(function (input) {
+      return generate("describeImage", input.modelSelection, (service, modelSelection) =>
+        service.describeImage
+          ? service.describeImage({ ...input, modelSelection })
+          : Effect.fail(
+              new TextGenerationError({
+                operation: "describeImage",
+                detail: `Provider instance '${modelSelection.instanceId}' cannot read images for image relay. Choose a Codex, OpenCode, or ACP agent model.`,
+              }),
+            ),
       );
     }),
     generateThreadTitle: Effect.fn("TextGeneration.generateThreadTitle")(function (input) {

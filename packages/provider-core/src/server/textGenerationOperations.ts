@@ -9,6 +9,7 @@ import type { ProviderTextGeneration } from "./textGeneration.ts";
 import {
   buildBranchNamePrompt,
   buildCommitMessagePrompt,
+  buildImageDescriptionPrompt,
   buildPrContentPrompt,
   buildReviewGuidePrompt,
   buildThreadTitlePrompt,
@@ -69,7 +70,11 @@ export const decodeJsonReply = <S extends Schema.Top>(
   );
 };
 
-export function fromRunner(name: string, run: Runner): ProviderTextGeneration {
+export function fromRunner(
+  name: string,
+  run: Runner,
+  options: { readonly images?: boolean } = {},
+): ProviderTextGeneration {
   const generateCommitMessage: ProviderTextGeneration["generateCommitMessage"] = Effect.fn(
     `${name}.generateCommitMessage`,
   )(function* (input) {
@@ -167,11 +172,32 @@ export function fromRunner(name: string, run: Runner): ProviderTextGeneration {
     });
   });
 
+  const describeImage: NonNullable<ProviderTextGeneration["describeImage"]> = Effect.fn(
+    `${name}.describeImage`,
+  )(function* (input) {
+    const generated = yield* run({
+      operation: "describeImage",
+      cwd: input.cwd,
+      modelSelection: input.modelSelection,
+      attachments: [input.image],
+      ...buildImageDescriptionPrompt({ name: input.image.name, question: input.question }),
+    });
+    const description = generated.description.trim();
+    if (description.length === 0) {
+      return yield* new TextGenerationError({
+        operation: "describeImage",
+        detail: `${name} returned an empty image description.`,
+      });
+    }
+    return { description };
+  });
+
   return {
     generateCommitMessage,
     generatePrContent,
     generateBranchName,
     generateThreadTitle,
     generateReviewGuide,
+    ...(options.images ? { describeImage } : {}),
   } satisfies ProviderTextGeneration;
 }

@@ -67,6 +67,7 @@ describe("loadOpenCode2Catalog", () => {
           ["opencode/step-5-preview-free", "OpenCode Zen"],
         ],
       );
+      assert.deepStrictEqual(models[0]?.inputModalities, ["text", "image", "video"]);
     }),
   );
 

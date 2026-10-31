@@ -1448,9 +1448,17 @@ it.layer(NodeServices.layer)("server settings", (it) => {
               config: { serverUrl: "http://127.0.0.1:4096", serverPassword: "legacy-password" },
             },
           },
+          imageRelay: {
+            api: {
+              baseUrl: "https://api.mistral.ai/v1",
+              model: "mistral-medium-2604",
+              apiKey: "legacy-image-key",
+            },
+          },
         }),
       );
       const saved = yield* service.getSettings;
+      assert.strictEqual(saved.imageRelay.api?.apiKey, "legacy-image-key");
       const opencode = ProviderInstanceId.make("opencode");
       assert.propertyVal(
         saved.providerInstances[ProviderInstanceId.make("antigravity")]?.config,
@@ -1463,7 +1471,7 @@ it.layer(NodeServices.layer)("server settings", (it) => {
         "legacy-password",
       );
       const client = ServerSettingsModule.redactServerSettingsForClient(saved);
-      for (const value of ["legacy-api-key", "legacy-password"]) {
+      for (const value of ["legacy-api-key", "legacy-password", "legacy-image-key"]) {
         assert.notInclude(yield* fs.readFileString(config.settingsPath), value);
         assert.notInclude(JSON.stringify(client), value);
       }

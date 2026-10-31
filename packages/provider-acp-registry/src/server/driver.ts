@@ -14,6 +14,7 @@ import * as Clock from "effect/Clock";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import * as Result from "effect/Result";
@@ -24,6 +25,8 @@ import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import * as ProviderHost from "@t3tools/provider-core/server/ProviderHost";
 import { AcpRegistryAdapterV2Driver, type AcpRegistryAdapterV2DriverEnv } from "./adapter.ts";
 import type { ProviderTextGeneration } from "@t3tools/provider-core/server/textGeneration";
+import * as TextGenerationOperations from "@t3tools/provider-core/server/textGenerationOperations";
+import { buildImageDescriptionPrompt } from "@t3tools/provider-core/server/textGenerationPrompts";
 import { ProviderDriverError } from "@t3tools/provider-core/server/errors";
 import { makeManagedServerProvider } from "@t3tools/provider-core/server/managedProvider";
 import { mergeProviderInstanceEnvironment } from "@t3tools/provider-core/server/instanceEnvironment";
@@ -56,6 +59,7 @@ import * as AcpRegistrySupport from "./AcpRegistrySupport.ts";
 import * as AcpRegistryRuntimeCoordinator from "./AcpRegistryRuntimeCoordinator.ts";
 import * as AcpRegistryAuth from "./auth.ts";
 import * as AcpRegistryAuthenticationState from "./authenticationState.ts";
+import { promptAcpRegistryWithImage } from "./imageDescription.ts";
 
 const DRIVER_KIND = ProviderDriverKind.make("acpRegistry");
 const decodeSettings = Schema.decodeSync(AcpRegistrySettings);
@@ -67,7 +71,10 @@ const MAINTENANCE = makeManualOnlyProviderMaintenanceCapabilities({
   packageName: null,
 });
 
-const makeUnsupportedTextGeneration = (): ProviderTextGeneration => {
+/** Only image description runs here; it suits agents whose own models can see images. */
+const makeTextGeneration = (
+  describeImage: NonNullable<ProviderTextGeneration["describeImage"]>,
+): ProviderTextGeneration => {
   const unsupported = (operation: string) =>
     Effect.fail(
       new TextGenerationError({
@@ -81,6 +88,7 @@ const makeUnsupportedTextGeneration = (): ProviderTextGeneration => {
     generateBranchName: () => unsupported("generateBranchName"),
     generateThreadTitle: () => unsupported("generateThreadTitle"),
     generateReviewGuide: () => unsupported("generateReviewGuide"),
+    describeImage,
   };
 };
 
@@ -497,6 +505,7 @@ export const AcpRegistryDriver: ProviderDriver<AcpRegistrySettings, AcpRegistryD
     }
     const crypto = yield* Crypto.Crypto;
     const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+    const fileSystem = yield* FileSystem.FileSystem;
     const hostEnvironment = yield* HostProcess.Environment;
     const host = yield* ProviderHost.ProviderHost;
     const continuationIdentity = defaultProviderContinuationIdentity({
@@ -818,7 +827,49 @@ export const AcpRegistryDriver: ProviderDriver<AcpRegistrySettings, AcpRegistryD
         refresh: snapshot.refresh.pipe(Effect.tap(() => controller.refreshMethods ?? Effect.void)),
       },
       orchestrationAdapter,
-      textGeneration: makeUnsupportedTextGeneration(),
+      textGeneration: makeTextGeneration(
+        Effect.fn("AcpRegistryTextGeneration.describeImage")(function* (input) {
+          const path = host.resolveAttachmentPath(input.image);
+          if (path === null) {
+            return yield* new TextGenerationError({
+              operation: "describeImage",
+              detail: "The image to describe could not be resolved.",
+            });
+          }
+          const bytes = yield* fileSystem.readFile(path).pipe(
+            Effect.mapError(
+              (cause) =>
+                new TextGenerationError({
+                  operation: "describeImage",
+                  detail: "The image to describe could not be read.",
+                  cause,
+                }),
+            ),
+          );
+          const request = buildImageDescriptionPrompt({
+            name: input.image.name,
+            question: input.question,
+          });
+          const reply = yield* promptAcpRegistryWithImage({
+            instanceId,
+            settings: effectiveConfig,
+            cwd: input.cwd,
+            environment: processEnvironment,
+            model: input.modelSelection.model,
+            prompt: request.prompt,
+            image: { data: Buffer.from(bytes).toString("base64"), mimeType: input.image.mimeType },
+          }).pipe(
+            Effect.provideService(AcpRegistrySupport.AcpRegistryCatalog, catalog),
+            Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+            Effect.provideService(Crypto.Crypto, crypto),
+          );
+          return yield* TextGenerationOperations.decodeJsonReply(
+            { operation: "describeImage", outputSchema: request.outputSchema },
+            displayName ?? "ACP agent",
+            reply,
+          );
+        }),
+      ),
       acpSessionManagement: {
         listSessions: ({ cwd, cursor }) =>
           provideAcpManagementServices(

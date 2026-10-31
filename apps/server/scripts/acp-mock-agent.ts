@@ -67,6 +67,7 @@ const terminalOutputBytes = Number(process.env.T3_ACP_EMIT_TERMINAL_OUTPUT_BYTES
 const supportsSessionLifecycle = process.env.T3_ACP_SESSION_LIFECYCLE === "1";
 const supportsAcpMcp = process.env.T3_ACP_MCP_ACP === "1";
 const supportsHttpMcp = process.env.T3_ACP_MCP_HTTP === "1";
+const supportsImagePrompts = process.env.T3_ACP_PROMPT_IMAGE === "1";
 const supportsV2Management = process.env.T3_ACP_V2_MANAGEMENT === "1";
 const advertisedAuthMethodId = process.env.T3_ACP_AUTH_METHOD_ID?.trim();
 const initializeAuthMethodId =
@@ -526,6 +527,7 @@ const program = Effect.gen(function* () {
                   },
                 }
               : {}),
+            ...(supportsImagePrompts ? { prompt: { image: {} } } : {}),
           },
           ...(supportsV2Management ? { providers: {} } : {}),
         },
