@@ -198,5 +198,6 @@ export const make = Effect.fn("OpenCode2TextGeneration.make")(function* () {
   return TextGenerationOperations.fromRunner(
     "OpenCode2TextGeneration",
     TextGenerationOperations.withoutInvestigation("OpenCode", run),
+    { images: true },
   );
 });

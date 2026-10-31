@@ -50,6 +50,43 @@ also send files to T3 Code through another app's system share sheet.
 
 See [images and videos](#images-and-videos-in-messages) for previewing and saving media.
 
+## Images for models that cannot see them
+
+When a model cannot read images, T3 Code has a vision model transcribe each
+attached image and sends the transcription instead. Such threads also get a
+`t3_image_describe` tool for reading image files from the workspace; other
+threads never see it. Transcriptions are marked as untrusted, so text inside a
+screenshot is not treated as instructions. If a transcription fails, the agent is
+told it could not see the image.
+
+One vision model transcribes for every provider. The fastest option is any
+OpenAI-compatible endpoint, such as Mistral, OpenAI, OpenRouter, or a local
+server, set in the server's `settings.json`. T3 Code moves the key into its
+secret store when it loads the file:
+
+```json
+{
+  "imageRelay": {
+    "api": {
+      "baseUrl": "https://api.mistral.ai/v1",
+      "model": "mistral-medium-2604",
+      "apiKey": "your-key"
+    }
+  }
+}
+```
+
+Without `api`, T3 Code asks a provider instead: `imageRelay.modelSelection`, or your
+text generation model when that is unset. Codex, OpenCode, and ACP agents such as
+Mistral Vibe can do this, but each image then runs through a full agent session,
+which is slower and costs several times more.
+
+OpenCode reports which of its models accept images, and ACP agents report it
+when a session starts, so most models need no setup. Add a model to
+`imageRelay.models` when it accepts images in its protocol but cannot see them;
+use its slug, or `instanceId/slug` to match one provider. Set
+`imageRelay.enabled` to `false` to turn relay off.
+
 ## Send while the agent is working
 
 On web and desktop, choose **Settings → Chat → Follow-up behavior** to queue

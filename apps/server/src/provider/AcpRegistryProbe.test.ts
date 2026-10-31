@@ -1,4 +1,6 @@
 // @effect-diagnostics nodeBuiltinImport:off
+import * as NodeFS from "node:fs";
+import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import * as NodeURL from "node:url";
 
@@ -18,6 +20,7 @@ import {
   logoutAcpRegistry,
   normalizeAcpRegistryAuthMethods,
   normalizeAcpRegistryCommands,
+  promptAcpRegistryWithImage,
 } from "@t3tools/provider-acp-registry/testing";
 import * as AcpRegistrySupport from "@t3tools/provider-acp-registry/server/AcpRegistrySupport";
 
@@ -372,6 +375,66 @@ describe("ACP Registry probe", () => {
       Effect.provide(NodeServices.layer),
       Effect.scoped,
     );
+  });
+
+  it.effect("describes an image through a throwaway agent session on the chosen model", () => {
+    const requestLog = NodePath.join(
+      NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-acp-image-")),
+      "requests.ndjson",
+    );
+    const mockCatalog = (env: NodeJS.ProcessEnv) =>
+      AcpRegistrySupport.AcpRegistryCatalog.of({
+        search: () => Effect.die("unused search"),
+        prepare: () => Effect.die("unused prepare"),
+        inspect: () => Effect.die("unused inspect"),
+        uninstallManagedBinary: () => Effect.die("unused uninstall"),
+        resolve: () =>
+          Effect.succeed({
+            agent: {
+              id: "mock-agent",
+              name: "Mock Agent",
+              version: "1.0.0",
+              description: "ACP image description test agent",
+              distribution: { npx: { package: "mock-agent@1.0.0" } },
+            },
+            distribution: "npx" as const,
+            spawn: { command: "node", args: [mockAgentPath], env: { ...process.env, ...env } },
+          }),
+      });
+    const describe = promptAcpRegistryWithImage({
+      instanceId,
+      settings: decodeSettings({ agentId: "mock-agent" }),
+      cwd: process.cwd(),
+      environment: process.env,
+      model: "composer-2",
+      prompt: "Describe the image.",
+      image: { data: "iVBORw0KGgo=", mimeType: "image/png" },
+    });
+
+    return Effect.gen(function* () {
+      const reply = yield* describe.pipe(
+        Effect.provideService(
+          AcpRegistrySupport.AcpRegistryCatalog,
+          mockCatalog({
+            T3_ACP_PROMPT_IMAGE: "1",
+            T3_ACP_PROMPT_RESPONSE_TEXT: '{"description":"A red square."}',
+            T3_ACP_REQUEST_LOG_PATH: requestLog,
+          }),
+        ),
+      );
+      expect(reply).toBe('{"description":"A red square."}');
+      const requests = NodeFS.readFileSync(requestLog, "utf8");
+      expect(requests).toContain('"value":"composer-2"');
+      expect(requests).toContain('"type":"image"');
+      // Switched for the request, then back so the agent's saved default stays put.
+      expect(requests.match(/"configId":"model"/g)).toHaveLength(2);
+
+      const refused = yield* describe.pipe(
+        Effect.provideService(AcpRegistrySupport.AcpRegistryCatalog, mockCatalog({})),
+        Effect.flip,
+      );
+      expect(refused.detail).toBe("This ACP agent does not accept images.");
+    }).pipe(Effect.provide(NodeServices.layer));
   });
 
   it("distinguishes authentication failures from generic probe failures", () => {

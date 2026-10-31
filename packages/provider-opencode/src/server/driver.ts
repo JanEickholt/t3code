@@ -125,6 +125,8 @@ function selectOpenCodeRuntimeTextGeneration(
   v1: ProviderTextGeneration,
   v2: ProviderTextGeneration,
 ): ProviderTextGeneration {
+  const describeV1 = v1.describeImage;
+  const describeV2 = v2.describeImage;
   return {
     generateCommitMessage: (input) =>
       byOpenCodeRuntime(probe.get, {
@@ -151,6 +153,12 @@ function selectOpenCodeRuntimeTextGeneration(
         v1: v1.generateReviewGuide(input),
         v2: v2.generateReviewGuide(input),
       }),
+    ...(describeV1 && describeV2
+      ? {
+          describeImage: (input) =>
+            byOpenCodeRuntime(probe.get, { v1: describeV1(input), v2: describeV2(input) }),
+        }
+      : {}),
   };
 }
 

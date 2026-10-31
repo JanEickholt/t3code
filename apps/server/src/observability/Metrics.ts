@@ -47,6 +47,14 @@ export const providerTurnDuration = Metric.timer("t3_provider_turn_duration", {
   description: "Time for the provider adapter to start a turn, not how long the turn runs.",
 });
 
+export const imageRelayTotal = Metric.counter("t3_image_relay_total", {
+  description: "Images transcribed for models that cannot read them, by source and outcome.",
+});
+
+export const imageRelayDuration = Metric.timer("t3_image_relay_duration", {
+  description: "Time for the vision model to transcribe one relayed image.",
+});
+
 // OTLP carries the unit, and Prometheus names the series by it: a unitless gauge gains `_ratio`.
 export const serverResidentBytes = Metric.gauge("t3_server_resident_bytes", {
   description: "Resident memory of the server process.",

@@ -44,6 +44,7 @@ import { ProviderWorkspaceMissingError } from "../provider/Errors.ts";
 import * as ProjectService from "../project/ProjectService.ts";
 import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
 import * as ServerSettings from "../serverSettings.ts";
+import * as ImageRelay from "../provider/ImageRelay.ts";
 import * as McpSessionRegistry from "../mcp/McpSessionRegistry.ts";
 import * as EventSink from "./EventSink.ts";
 import * as CommandOutputHub from "./CommandOutputHub.ts";
@@ -340,6 +341,7 @@ export const layerWithOptions = (
       /** Unreadable settings must preserve explicit browser-access opt-outs. */
       const serverSettings = yield* Effect.serviceOption(ServerSettings.ServerSettingsService);
       const projectService = yield* Effect.serviceOption(ProjectService.ProjectService);
+      const imageRelay = yield* Effect.serviceOption(ImageRelay.ImageRelay);
       const eventSink = yield* EventSink.EventSinkV2;
       const commandOutput = yield* CommandOutputHub.CommandOutputHub;
       const idAllocator = yield* IdAllocator.IdAllocatorV2;
@@ -436,6 +438,19 @@ export const layerWithOptions = (
       };
       const isMcpCredentialReserved = (threadId: ThreadId, mcpCredentialId: string) =>
         (mcpCredentialReservations.get(mcpReservationKey(threadId, mcpCredentialId)) ?? 0) > 0;
+      const describeToolOffered = (threadId: ThreadId, providerInstanceId: ProviderInstanceId) =>
+        Option.isNone(imageRelay)
+          ? Effect.succeed(false)
+          : projectionStore.getThread(threadId).pipe(
+              Effect.flatMap((thread) =>
+                imageRelay.value.offersDescribeTool({
+                  instanceId: providerInstanceId,
+                  model: thread.modelSelection.model,
+                  projectId: thread.projectId,
+                }),
+              ),
+              Effect.orElseSucceed(() => false),
+            );
       const mcpPrepareLock = yield* KeyedLock.make<ThreadId>();
       /** Serialize prepares per thread so concurrent rotations cannot revoke each other's credentials. */
       const prepareMcpSession = (
@@ -457,6 +472,11 @@ export const layerWithOptions = (
                 >(["orchestration", "worktree", "pull-requests"]);
                 if (browserToolsAvailable) capabilities.add("preview");
                 if (deviceToolsAvailable) capabilities.add("device");
+                const imageRelayToolsAvailable = yield* describeToolOffered(
+                  threadId,
+                  providerInstanceId,
+                );
+                if (imageRelayToolsAvailable) capabilities.add("image-relay");
                 const subagent = yield* projectionStore.getThread(threadId).pipe(
                   Effect.map((thread) => thread.lineage.relationshipToParent === "subagent"),
                   Effect.orElseSucceed(() => false),
@@ -482,6 +502,7 @@ export const layerWithOptions = (
                     resolved.thread.providerInstanceId === providerInstanceId &&
                     resolved.capabilities.has("preview") === browserToolsAvailable &&
                     resolved.capabilities.has("device") === deviceToolsAvailable &&
+                    resolved.capabilities.has("image-relay") === imageRelayToolsAvailable &&
                     // A credential issued while the lineage read failed is replaced once it works.
                     (resolved.thread.subagent === true) === subagent
                   ) {
@@ -1708,6 +1729,49 @@ export const layerWithOptions = (
               modelFamily: normalizeModelMetricLabel(model),
             },
           });
+        // Every adapter's turns pass here, so images are relayed once for all providers.
+        const relayStartInput = (input: ProviderAdapter.ProviderAdapterV2TurnInput) =>
+          Option.isNone(imageRelay)
+            ? Effect.succeed(input)
+            : imageRelay.value
+                .relayTurnMessage({
+                  instanceId: runtime.instanceId,
+                  model: input.modelSelection.model,
+                  acceptsImagePrompts: runtime.acceptsImagePrompts,
+                  projectId: input.appThread.projectId,
+                  cwd: input.appThread.worktreePath,
+                  message: input.message,
+                  firstTurn: input.providerTurnOrdinal === 1,
+                })
+                .pipe(
+                  Effect.map((message) =>
+                    message === input.message ? input : { ...input, message },
+                  ),
+                );
+        const relaySteerInput = (input: ProviderAdapter.ProviderAdapterV2SteerInput) =>
+          Option.isNone(imageRelay) || !input.message.attachments.some((a) => a.type === "image")
+            ? Effect.succeed(input)
+            : projectionStore.getThread(input.threadId).pipe(
+                Effect.flatMap((thread) =>
+                  imageRelay.value.relayTurnMessage({
+                    instanceId: runtime.instanceId,
+                    model: thread.modelSelection.model,
+                    acceptsImagePrompts: runtime.acceptsImagePrompts,
+                    projectId: thread.projectId,
+                    cwd: thread.worktreePath,
+                    message: input.message,
+                    firstTurn: false,
+                  }),
+                ),
+                Effect.map((message) =>
+                  message === input.message ? input : { ...input, message },
+                ),
+                Effect.catch((cause) =>
+                  Effect.logWarning("Image relay could not read the steered thread.", {
+                    cause,
+                  }).pipe(Effect.as(input)),
+                ),
+              );
         return {
           ...runtime,
           subscribeEvents,
@@ -1859,7 +1923,13 @@ export const layerWithOptions = (
                     ),
                   ),
                   () =>
-                    runtime.startTurn(input).pipe(turnMetrics("send", input.modelSelection.model)),
+                    relayStartInput(input).pipe(
+                      Effect.flatMap((relayed) =>
+                        runtime
+                          .startTurn(relayed)
+                          .pipe(turnMetrics("send", input.modelSelection.model)),
+                      ),
+                    ),
                   (_, exit) =>
                     Exit.isFailure(exit)
                       ? observeActivity(
@@ -1872,7 +1942,13 @@ export const layerWithOptions = (
             ),
           steerTurn: (input) =>
             observeActivity(providerSessionId, touchActivity(providerSessionId)).pipe(
-              Effect.andThen(runtime.steerTurn(input).pipe(turnMetrics("steer"))),
+              Effect.andThen(
+                relaySteerInput(input).pipe(
+                  Effect.flatMap((relayed) =>
+                    runtime.steerTurn(relayed).pipe(turnMetrics("steer")),
+                  ),
+                ),
+              ),
             ),
           // A provider starved of memory can stop answering, so no caller may wait on it unbounded.
           interruptTurn: (input) =>

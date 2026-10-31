@@ -892,6 +892,34 @@ export const ObservabilitySettings = Schema.Struct({
 });
 export type ObservabilitySettings = typeof ObservabilitySettings.Type;
 
+const ImageRelayTimeoutMs = Schema.Int.check(
+  Schema.isBetween({ minimum: 1_000, maximum: 600_000 }),
+);
+
+/** An OpenAI-compatible chat completions endpoint, called without any agent harness. */
+export const ImageRelayApi = Schema.Struct({
+  /** Up to and excluding `/chat/completions`, e.g. `https://api.mistral.ai/v1`. */
+  baseUrl: TrimmedNonEmptyString,
+  model: TrimmedNonEmptyString,
+  apiKey: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed("")), secretSetting),
+});
+export type ImageRelayApi = typeof ImageRelayApi.Type;
+
+/** Transcribes images for models that cannot read them, with one vision model for every provider. */
+export const ImageRelaySettings = Schema.Struct({
+  enabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  /** Takes precedence over modelSelection: one direct request, no agent prompt or tools. */
+  api: Schema.NullOr(ImageRelayApi).pipe(Schema.withDecodingDefault(Effect.succeed(null))),
+  /** Must accept image input. Null uses textGenerationModelSelection. */
+  modelSelection: Schema.NullOr(ModelSelection).pipe(
+    Schema.withDecodingDefault(Effect.succeed(null)),
+  ),
+  timeoutMs: ImageRelayTimeoutMs.pipe(Schema.withDecodingDefault(Effect.succeed(60_000))),
+  /** Models to relay even when their provider claims image input: a model slug, or `instanceId/slug`. */
+  models: Schema.Array(TrimmedNonEmptyString).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
+});
+export type ImageRelaySettings = typeof ImageRelaySettings.Type;
+
 export const SourceControlWritingStyleMode = Schema.Literals([
   "repo_conventions",
   "conventional_commits",
@@ -1330,6 +1358,7 @@ export const ServerSettings = Schema.Struct({
     Schema.withDecodingDefault(Effect.succeed(null)),
   ),
   reviewGuideInstructions: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  imageRelay: ImageRelaySettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
 
   pullRequestMergeMethod: Schema.NullOr(PullRequestMergeMethod).pipe(
     Schema.withDecodingDefault(Effect.succeed(null)),
@@ -1650,6 +1679,15 @@ export const ServerSettingsPatch = Schema.Struct({
   reviewGuidesEnabled: Schema.optionalKey(Schema.Boolean),
   reviewGuideModelSelection: Schema.optionalKey(Schema.NullOr(ModelSelection)),
   reviewGuideInstructions: Schema.optionalKey(TrimmedString),
+  imageRelay: Schema.optionalKey(
+    Schema.Struct({
+      enabled: Schema.optionalKey(Schema.Boolean),
+      api: Schema.optionalKey(Schema.NullOr(ImageRelayApi)),
+      modelSelection: Schema.optionalKey(Schema.NullOr(ModelSelection)),
+      timeoutMs: Schema.optionalKey(ImageRelayTimeoutMs),
+      models: Schema.optionalKey(Schema.Array(TrimmedNonEmptyString)),
+    }),
+  ),
   pullRequestMergeMethod: Schema.optionalKey(Schema.NullOr(PullRequestMergeMethod)),
   observability: Schema.optionalKey(
     Schema.Struct({

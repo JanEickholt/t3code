@@ -10,6 +10,7 @@ import * as PreviewAgentActivity from "../preview/PreviewAgentActivity.ts";
 import * as McpAppRequests from "../mcpApps/McpAppRequests.ts";
 import * as ProviderSessionRuntime from "../persistence/ProviderSessionRuntime.ts";
 import * as TextGeneration from "../textGeneration/TextGeneration.ts";
+import * as ImageRelay from "../provider/ImageRelay.ts";
 import * as ProviderAuthService from "../provider/ProviderAuthService.ts";
 import * as AgentSessionImporter from "../project/AgentSessionImporter.ts";
 import * as AgentSessionScanner from "../project/AgentSessionScanner.ts";
@@ -133,6 +134,7 @@ const layerCommandOutputHubProvided = CommandOutputHub.layer.pipe(
 const layerProviderSessionManagerProvided = ProviderSessionManager.layer.pipe(
   Layer.provide(
     Layer.mergeAll(
+      ImageRelay.layer.pipe(Layer.provide(TextGeneration.layer)),
       layerCommandOutputHubProvided,
       ProviderAdapterRegistry.layerFromProviderInstanceRegistry,
       layerEventSink,

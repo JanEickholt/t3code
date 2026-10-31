@@ -392,5 +392,5 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
     }).pipe(Effect.ensuring(cleanup));
   });
 
-  return TextGenerationOperations.fromRunner("CodexTextGeneration", runCodexJson);
+  return TextGenerationOperations.fromRunner("CodexTextGeneration", runCodexJson, { images: true });
 });
