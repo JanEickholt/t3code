@@ -1730,41 +1730,47 @@ export const layerWithOptions = (
             },
           });
         // Every adapter's turns pass here, so images are relayed once for all providers.
-        const relayStartInput = (input: ProviderAdapter.ProviderAdapterV2TurnInput) =>
+        const relayMessage = <
+          I extends { readonly message: ProviderAdapter.ProviderAdapterV2TurnMessage },
+        >(
+          input: I,
+          turn: Omit<
+            ImageRelay.RelayTurnMessageInput,
+            "instanceId" | "acceptsImagePrompts" | "message"
+          >,
+        ) =>
           Option.isNone(imageRelay)
             ? Effect.succeed(input)
             : imageRelay.value
                 .relayTurnMessage({
+                  ...turn,
                   instanceId: runtime.instanceId,
-                  model: input.modelSelection.model,
                   acceptsImagePrompts: runtime.acceptsImagePrompts,
-                  projectId: input.appThread.projectId,
-                  cwd: input.appThread.worktreePath,
                   message: input.message,
-                  firstTurn: input.providerTurnOrdinal === 1,
                 })
                 .pipe(
                   Effect.map((message) =>
                     message === input.message ? input : { ...input, message },
                   ),
                 );
+        const relayStartInput = (input: ProviderAdapter.ProviderAdapterV2TurnInput) =>
+          relayMessage(input, {
+            model: input.modelSelection.model,
+            projectId: input.appThread.projectId,
+            cwd: input.appThread.worktreePath,
+            firstTurn: input.providerTurnOrdinal === 1,
+          });
         const relaySteerInput = (input: ProviderAdapter.ProviderAdapterV2SteerInput) =>
           Option.isNone(imageRelay) || !input.message.attachments.some((a) => a.type === "image")
             ? Effect.succeed(input)
             : projectionStore.getThread(input.threadId).pipe(
                 Effect.flatMap((thread) =>
-                  imageRelay.value.relayTurnMessage({
-                    instanceId: runtime.instanceId,
+                  relayMessage(input, {
                     model: thread.modelSelection.model,
-                    acceptsImagePrompts: runtime.acceptsImagePrompts,
                     projectId: thread.projectId,
                     cwd: thread.worktreePath,
-                    message: input.message,
                     firstTurn: false,
                   }),
-                ),
-                Effect.map((message) =>
-                  message === input.message ? input : { ...input, message },
                 ),
                 Effect.catch((cause) =>
                   Effect.logWarning("Image relay could not read the steered thread.", {
